@@ -3,7 +3,6 @@ import os
 import sys
 
 
-
 def load_image(name, color_key=None):
     fullname = os.path.join('data', name)
     try:
@@ -20,6 +19,13 @@ def load_image(name, color_key=None):
 
 
 pygame.init()
+pygame.mixer.init()
+
+sound1 = pygame.mixer.Sound("music_start.mp3")
+sound2 = pygame.mixer.Sound("music_crash.mp3")
+sound3 = pygame.mixer.Sound("music_win.mp3")
+sound4 = pygame.mixer.Sound("music_game_over.mp3")
+
 screen_size = (1280, 720)
 screen = pygame.display.set_mode(screen_size)
 FPS = 50
@@ -31,6 +37,32 @@ def terminate():
     sys.exit
 
 
+def end_screen():
+    fon = pygame.transform.scale(load_image('fon_end.jpg'), screen_size)
+    screen.blit(fon, (0, 0))
+    sound4.play(0)
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                terminate()
+                sound4.stop()
+        pygame.display.flip()
+        clock.tick(FPS)
+
+
+def win_screen():
+    fon = pygame.transform.scale(load_image('fon_win.jpg'), screen_size)
+    screen.blit(fon, (0, 0))
+    sound3.play()
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                terminate()
+                sound3.stop()
+        pygame.display.flip()
+        clock.tick(FPS)
+
+
 def start_screen():
     fon = pygame.transform.scale(load_image('fon_start.jpg'), screen_size)
     screen.blit(fon, (0, 0))
@@ -39,11 +71,15 @@ def start_screen():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 terminate()
+                sound1.stop()
             elif event.type == pygame.KEYDOWN or \
                     event.type == pygame.MOUSEBUTTONDOWN:
+                sound1.stop()
                 return
+        sound1.play(-1)
         pygame.display.flip()
         clock.tick(FPS)
+
 
 start_screen()
 
@@ -69,7 +105,6 @@ class Fon(pygame.sprite.Sprite):
         self.rect.bottom = height
 
 
-
 class Player(pygame.sprite.Sprite):
     image = load_image("player.png", color_key=-1)
 
@@ -80,6 +115,13 @@ class Player(pygame.sprite.Sprite):
         self.mask = pygame.mask.from_surface(self.image)
         self.rect.x = pos[0]
         self.rect.y = pos[1]
+
+    def update(self):
+        key = pygame.key.get_pressed()
+        if key[pygame.K_RIGHT] and self.rect.right < 1280:
+            self.rect.left += 10
+        elif key[pygame.K_LEFT] and self.rect.left > 0:
+            self.rect.left -= 10
 
 
 class Ball(pygame.sprite.Sprite):
@@ -92,6 +134,7 @@ class Ball(pygame.sprite.Sprite):
         self.mask = pygame.mask.from_surface(self.image)
         self.rect.x = pos[0]
         self.rect.y = pos[1]
+
 
 class BlockGreen(pygame.sprite.Sprite):
     image = load_image("block_green.png", color_key=-1)
@@ -129,6 +172,25 @@ class BlockBlue(pygame.sprite.Sprite):
         self.rect.y = pos[1]
 
 
+def detect_collision(dx, dy, ball, x):
+    if dx > 0:
+        delta_x = ball.rect.right - x.rect.left
+    else:
+        delta_x = x.rect.right - ball.rect.left
+    if dy > 0:
+        delta_y = ball.rect.bottom - x.rect.top
+    else:
+        delta_y = x.rect.bottom - ball.rect.top
+
+    if abs(delta_x - delta_y) < 10:
+        dx, dy = -dx, -dy
+    elif delta_x > delta_y:
+        dy = -dy
+    elif delta_y > delta_x:
+        dx = -dx
+    return dx, dy
+
+
 all_sprites = pygame.sprite.Group()
 
 for i in range(0, 1281, 128):
@@ -136,11 +198,12 @@ for i in range(0, 1281, 128):
     all_sprites.add(BlockRed((i, 64)))
     all_sprites.add(BlockBlue((i, 128)))
 
-
+dx = 5
+dy = -5
 player = Player((512, 637))
-ball = Ball((620, 603))
-all_sprites.add(ball)
+ball = Ball((620, 600))
 all_sprites.add(player)
+all_sprites.add(ball)
 running = True
 
 while running:
@@ -151,9 +214,33 @@ while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+    if ball.rect.x > 1240:
+        dx = -dx
+    if ball.rect.y < 0:
+        dy = -dy
+    if ball.rect.x < 0:
+        dx = -dx
+    if ball.rect.y > 680:
+        end_screen()
+    if pygame.sprite.collide_mask(ball, player) and dy > 0:
+        dx, dy = detect_collision(dx, dy, ball, player)
+
+    for i in all_sprites:
+        if pygame.sprite.collide_mask(ball, i) and i != ball and i != player:
+            all_sprites.remove(i)
+            sound2.play()
+            dx, dy = detect_collision(dx, dy, ball, i)
+            if len(all_sprites) < 5:
+                win_screen()
+
+    ball.rect = ball.rect.move(dx, dy)
     all_sprites.draw(screen)
     all_sprites.update()
+    if len(all_sprites) < 5:
+        win_screen()
     pygame.display.flip()
+    if len(all_sprites) < 5:
+        win_screen()
     clock.tick(50)
 pygame.quit()
 
